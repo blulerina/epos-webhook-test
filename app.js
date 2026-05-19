@@ -110,6 +110,7 @@ app.post('/', async (req, res) => {
       );
 
       const geminiData = await geminiResponse.json();
+      console.log('Gemini API response:', JSON.stringify(geminiData));
       const aiReply = geminiData.candidates[0].content.parts[0].text;
 
       console.log(`AI reply: ${aiReply}`);
