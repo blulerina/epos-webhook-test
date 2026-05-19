@@ -113,6 +113,7 @@ app.post('/', async (req, res) => {
       });
 
       const groqData = await groqResponse.json();
+      console.log('Groq API response:', JSON.stringify(groqData));
       const aiReply = groqData.choices[0].message.content;
 
       console.log(`AI reply: ${aiReply}`);
