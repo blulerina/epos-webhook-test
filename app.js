@@ -5,7 +5,7 @@ const port = process.env.PORT || 3000;
 const verifyToken = process.env.VERIFY_TOKEN;
 const phoneNumberId = process.env.PHONE_NUMBER_ID;
 const accessToken = process.env.ACCESS_TOKEN;
-const openaiApiKey = process.env.OPENAI_API_KEY;
+const geminiApiKey = process.env.GEMINI_API_KEY;
 
 // Track first time customers
 const seenCustomers = new Map();
@@ -61,9 +61,8 @@ app.post('/', async (req, res) => {
 
     // Step 3: Check if first time customer
     if (!seenCustomers.has(customerNumber)) {
-      // First time — send epos_welcome template
       seenCustomers.set(customerNumber, true);
-      console.log(`First time customer ${customerName} (${customerNumber}), sending template...`);
+      console.log(`First time customer ${customerName}, sending template...`);
 
       await fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
         method: 'POST',
@@ -76,7 +75,7 @@ app.post('/', async (req, res) => {
           to: customerNumber,
           type: 'template',
           template: {
-            name: 'epos_welcome_msg',
+            name: 'epos_welcome',
             language: { code: 'en' },
             components: [{
               type: 'body',
@@ -89,32 +88,29 @@ app.post('/', async (req, res) => {
       console.log(`Sent epos_welcome template to ${customerName}`);
 
     } else {
-      // Returning customer — send AI reply
-      console.log(`Returning customer ${customerName} (${customerNumber}), sending AI reply...`);
+      console.log(`Returning customer ${customerName}, sending AI reply...`);
 
-      const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openaiApiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: `You are a helpful customer service assistant for EPOS Malaysia, a company that provides all-in-one POS solutions for SMEs. Be friendly, concise and helpful. The customer's name is ${customerName}.`
+      // Call Gemini API
+      const geminiResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: {
+              parts: [{
+                text: `You are a helpful customer service assistant for EPOS Malaysia, a company that provides all-in-one POS solutions for SMEs. Be friendly, concise and helpful. The customer's name is ${customerName}.`
+              }]
             },
-            {
-              role: 'user',
-              content: customerMessage
-            }
-          ]
-        })
-      });
+            contents: [{
+              parts: [{ text: customerMessage }]
+            }]
+          })
+        }
+      );
 
-      const openaiData = await openaiResponse.json();
-      const aiReply = openaiData.choices[0].message.content;
+      const geminiData = await geminiResponse.json();
+      const aiReply = geminiData.candidates[0].content.parts[0].text;
 
       console.log(`AI reply: ${aiReply}`);
 
