@@ -5,7 +5,7 @@ const port = process.env.PORT || 3000;
 const verifyToken = process.env.VERIFY_TOKEN;
 const phoneNumberId = process.env.PHONE_NUMBER_ID;
 const accessToken = process.env.ACCESS_TOKEN;
-const geminiApiKey = process.env.GEMINI_API_KEY;
+const groqApiKey = process.env.GROQ_API_KEY;
 
 // Track first time customers
 const seenCustomers = new Map();
@@ -90,28 +90,30 @@ app.post('/', async (req, res) => {
     } else {
       console.log(`Returning customer ${customerName}, sending AI reply...`);
 
-      // Call Gemini API
-      const geminiResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            system_instruction: {
-              parts: [{
-                text: `You are a helpful customer service assistant for EPOS Malaysia, a company that provides all-in-one POS solutions for SMEs. Be friendly, concise and helpful. The customer's name is ${customerName}.`
-              }]
+      // Call Groq API
+      const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${groqApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'llama3-8b-8192',
+          messages: [
+            {
+              role: 'system',
+              content: `You are a helpful customer service assistant for EPOS Malaysia, a company that provides all-in-one POS solutions for SMEs. Be friendly, concise and helpful. The customer's name is ${customerName}.`
             },
-            contents: [{
-              parts: [{ text: customerMessage }]
-            }]
-          })
-        }
-      );
+            {
+              role: 'user',
+              content: customerMessage
+            }
+          ]
+        })
+      });
 
-      const geminiData = await geminiResponse.json();
-      console.log('Gemini API response:', JSON.stringify(geminiData));
-      const aiReply = geminiData.candidates[0].content.parts[0].text;
+      const groqData = await groqResponse.json();
+      const aiReply = groqData.choices[0].message.content;
 
       console.log(`AI reply: ${aiReply}`);
 
