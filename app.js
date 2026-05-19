@@ -75,7 +75,7 @@ app.post('/', async (req, res) => {
           to: customerNumber,
           type: 'template',
           template: {
-            name: 'epos_welcome',
+            name: 'epos_welcome_msg',
             language: { code: 'en' },
             components: [{
               type: 'body',
