@@ -93,7 +93,9 @@ app.post('/', async (req, res) => {
     } else {
       console.log(`Returning customer ${customerName}, sending AI reply...`);
 
-      // Step 3: Call Groq API and maintain typing indicator simultaneously
+      // Step 3: Call Groq API and track response time
+      const groqStart = Date.now();
+
       const [groqResponse] = await Promise.all([
         fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
@@ -115,9 +117,12 @@ app.post('/', async (req, res) => {
             ]
           })
         }),
-        // Keep typing indicator visible for at least 1 second
+        // Minimum wait time so typing indicator is visible
         new Promise(resolve => setTimeout(resolve, 1000))
       ]);
+
+      const groqTime = Date.now() - groqStart;
+      console.log(`Groq response time: ${groqTime}ms`);
 
       const groqData = await groqResponse.json();
       console.log('Groq API response:', JSON.stringify(groqData));
