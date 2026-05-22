@@ -42,7 +42,7 @@ app.post('/', async (req, res) => {
     const messageId = message.id;
     const customerMessage = message.text?.body || '';
 
-    // Step 1: Send typing indicator
+    // Step 1: Mark message as read
     await fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
       method: 'POST',
       headers: {
@@ -52,14 +52,52 @@ app.post('/', async (req, res) => {
       body: JSON.stringify({
         messaging_product: 'whatsapp',
         status: 'read',
-        message_id: messageId,
+        message_id: messageId
+      })
+    });
+
+    console.log(`Marked message as read from ${customerNumber}`);
+
+    // Step 2: End any existing typing indicator (reset)
+    await fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: customerNumber,
+        type: 'typing_indicator',
+        typing_indicator: { type: 'end' }
+      })
+    });
+
+    console.log(`Reset typing indicator for ${customerNumber}`);
+
+    // Step 3: Small pause to let WhatsApp register the reset
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Step 4: Start fresh typing indicator
+    await fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: customerNumber,
+        type: 'typing_indicator',
         typing_indicator: { type: 'text' }
       })
     });
 
-    console.log(`Sent typing indicator to ${customerNumber}`);
+    console.log(`Sent fresh typing indicator to ${customerNumber}`);
 
-    // Step 2: Check if first time customer
+    // Step 5: Check if first time customer
     if (!seenCustomers.has(customerNumber)) {
       seenCustomers.set(customerNumber, true);
       console.log(`First time customer ${customerName}, sending template...`);
@@ -93,7 +131,7 @@ app.post('/', async (req, res) => {
     } else {
       console.log(`Returning customer ${customerName}, sending AI reply...`);
 
-      // Step 3: Call Groq API and track response time
+      // Step 6: Call Groq API while keeping typing indicator alive
       const groqStart = Date.now();
 
       const [groqResponse] = await Promise.all([
@@ -117,8 +155,8 @@ app.post('/', async (req, res) => {
             ]
           })
         }),
-        // Minimum wait time so typing indicator is visible
-        new Promise(resolve => setTimeout(resolve, 3000))
+        // Minimum wait so typing indicator is visible
+        new Promise(resolve => setTimeout(resolve, 1000))
       ]);
 
       const groqTime = Date.now() - groqStart;
@@ -130,6 +168,25 @@ app.post('/', async (req, res) => {
 
       console.log(`AI reply: ${aiReply}`);
 
+      // Step 7: End typing indicator before sending message
+      await fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: customerNumber,
+          type: 'typing_indicator',
+          typing_indicator: { type: 'end' }
+        })
+      });
+
+      console.log(`Ended typing indicator for ${customerNumber}`);
+
+      // Step 8: Send AI reply
       await fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
         method: 'POST',
         headers: {
