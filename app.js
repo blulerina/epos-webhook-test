@@ -118,7 +118,7 @@ app.post('/', async (req, res) => {
           })
         }),
         // Minimum wait time so typing indicator is visible
-        new Promise(resolve => setTimeout(resolve, 1000))
+        new Promise(resolve => setTimeout(resolve, 3000))
       ]);
 
       const groqTime = Date.now() - groqStart;
