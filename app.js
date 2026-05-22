@@ -21,6 +21,9 @@ app.get('/', (req, res) => {
 });
 
 app.post('/', async (req, res) => {
+  // Respond to Meta immediately to prevent retries
+  res.status(200).end();
+
   const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
   console.log(`\n\nWebhook received ${timestamp}\n`);
   console.log(JSON.stringify(req.body, null, 2));
@@ -30,7 +33,7 @@ app.post('/', async (req, res) => {
 
     if (!value.messages) {
       console.log('Status update received, skipping...');
-      return res.status(200).end();
+      return;
     }
 
     const message = value.messages[0];
@@ -39,7 +42,7 @@ app.post('/', async (req, res) => {
     const messageId = message.id;
     const customerMessage = message.text?.body || '';
 
-    // Step 1: Send typing indicator
+    // Step 1: Mark message as read + send typing indicator together
     await fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
       method: 'POST',
       headers: {
@@ -56,13 +59,13 @@ app.post('/', async (req, res) => {
 
     console.log(`Sent typing indicator to ${customerNumber}`);
 
-    // Step 2: Wait 1 second
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // Step 3: Check if first time customer
+    // Step 2: Check if first time customer
     if (!seenCustomers.has(customerNumber)) {
       seenCustomers.set(customerNumber, true);
       console.log(`First time customer ${customerName}, sending template...`);
+
+      // Wait 2 seconds before sending welcome template
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       await fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
         method: 'POST',
@@ -90,27 +93,36 @@ app.post('/', async (req, res) => {
     } else {
       console.log(`Returning customer ${customerName}, sending AI reply...`);
 
-      // Call Groq API
-      const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${groqApiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          messages: [
-            {
-              role: 'system',
-              content: `You are a helpful customer service assistant for EPOS Malaysia, a company that provides all-in-one POS solutions for SMEs. Be friendly, concise and helpful. The customer's name is ${customerName}.`
-            },
-            {
-              role: 'user',
-              content: customerMessage
-            }
-          ]
-        })
-      });
+      // Step 3: Call Groq API simultaneously with 2 second wait
+      const groqStart = Date.now();
+
+      const [groqResponse] = await Promise.all([
+        fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${groqApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            messages: [
+              {
+                role: 'system',
+                content: `You are a helpful customer service assistant for EPOS Malaysia, a company that provides all-in-one POS solutions for SMEs. Be friendly, concise and helpful. The customer's name is ${customerName}.`
+              },
+              {
+                role: 'user',
+                content: customerMessage
+              }
+            ]
+          })
+        }),
+        // Wait 2 seconds to give WhatsApp time to render typing indicator
+        new Promise(resolve => setTimeout(resolve, 2000))
+      ]);
+
+      const groqTime = Date.now() - groqStart;
+      console.log(`Groq response time: ${groqTime}ms`);
 
       const groqData = await groqResponse.json();
       console.log('Groq API response:', JSON.stringify(groqData));
@@ -118,6 +130,7 @@ app.post('/', async (req, res) => {
 
       console.log(`AI reply: ${aiReply}`);
 
+      // Step 4: Send AI reply
       await fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
         method: 'POST',
         headers: {
@@ -138,8 +151,6 @@ app.post('/', async (req, res) => {
   } catch (err) {
     console.log('Error:', err.message);
   }
-
-  res.status(200).end();
 });
 
 app.listen(port, () => {
